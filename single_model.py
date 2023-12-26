@@ -1,6 +1,6 @@
 from scipy.stats import binom
 
-def calculate_wound_probability(num_attackers, num_weapon_attacks, bs_ws, strength, armor_penetration, damage, toughness, save, invulnerable_save, fnp, sustained_hits, lethal_hits, devastating_wounds):
+def calculate_wound_probability(num_attackers, num_weapon_attacks, bs_ws, strength, armor_penetration, damage, toughness, save, invulnerable_save, fnp, sustained_hits, lethal_hits, devastating_wounds,  reroll_hits):
     """
     Calculates the probability of inflicting a wound per attack and the total number of attacks
     based on the provided attack and defense profiles, as well as additional mechanics like Sustained Hits,
@@ -13,9 +13,24 @@ def calculate_wound_probability(num_attackers, num_weapon_attacks, bs_ws, streng
     prob_hit = (7 - bs_ws) / 6
     prob_critical_hit = 1 / 6  # Assuming critical hit on a roll of 6
 
-    # Adjust for sustained hits
+    # Adjust for reroll hits
+    if reroll_hits:
+        # Calculate the probability of missing and hitting the reroll
+        prob_miss_then_hit = (1 - prob_hit) * prob_hit
+        # Add the probabilty hitting in the reroll to the hit total
+        prob_hit += prob_miss_then_hit
+
     additional_hits = prob_critical_hit * sustained_hits  # Additional hits per attack
     num_attacks += num_attacks * additional_hits  # Total additional hits
+
+    prob_normal_hits = prob_hit - prob_critical_hit
+    total_hits = num_attacks * prob_normal_hits
+
+    # Adjust for sustained hits
+    if sustained_hits:
+        total_critical_hits = num_attacks * prob_critical_hit
+        total_sustained_hits = total_critical_hits * sustained_hits
+        total_hits += total_critical_hits + total_sustained_hits
 
     # Probability of wounding based on the comparison of strength and toughness
     if strength >= 2 * toughness:
@@ -28,10 +43,6 @@ def calculate_wound_probability(num_attackers, num_weapon_attacks, bs_ws, streng
         prob_wound = 1/6
     else:
         prob_wound = 1/3
-
-    # Adjust for lethal hits
-    if lethal_hits:
-        prob_wound += prob_critical_hit * (1 - prob_wound)  # Critical hits wound automatically
 
     # Probability of failing the save (considering AP and choosing the best between SV and INVUL)
     mod_save = max(save - armor_penetration, invulnerable_save)
@@ -48,7 +59,12 @@ def calculate_wound_probability(num_attackers, num_weapon_attacks, bs_ws, streng
     # Total probability of inflicting a wound per attack
     wound_prob = prob_hit * prob_wound * prob_fail_save * prob_fail_fnp
 
-    return wound_prob, num_attacks
+    if lethal_hits:
+        prob_wound_final = (total_critical_hits * 1 + (total_hits - total_critical_hits) * wound_prob) / total_hits
+    else:
+        prob_wound_final = wound_prob
+
+    return prob_wound_final, num_attacks
 
 def calculate_success_probability(wound_prob, num_attacks_rounded, target_wounds):
     """
@@ -71,9 +87,10 @@ attack_profile = {
     'strength': 5,
     'armor_penetration': 1,
     'damage': 3,
-    'sustained_hits': 2,  # Adjust as needed
-    'lethal_hits': True,  # Adjust as needed
-    'devastating_wounds': True  # Adjust as needed
+    'sustained_hits': 2,
+    'lethal_hits': True,
+    'devastating_wounds': True,
+    'reroll_hits': False
 }
 
 defense_profile = {
